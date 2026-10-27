@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>도플러 효과 · 물리 시뮬레이터</title>
+<meta name="description" content="음원이나 관찰자가 움직일 때 파면 간격과 들리는 진동수가 어떻게 달라지는지, 반사파로 속력을 어떻게 재는지 눈으로 보는 시뮬레이션" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared/theme.css" />
+<link rel="stylesheet" href="doppler-effect.css" />
+</head>
+<body data-page="doppler-effect">
+
+<div class="page">
+
+  <header class="topbar">
+    <div class="brand">
+      <div>
+        <span class="eyebrow">탄성파와 소리 · Doppler</span>
+        <h1>도플러 효과</h1>
+      </div>
+    </div>
+
+    <nav class="tabs" id="tabs" aria-label="활동 단계">
+      <button class="tab is-active" data-tab="1" type="button"><b>1</b>음원 이동</button>
+      <button class="tab" data-tab="2" type="button"><b>2</b>관찰자 이동</button>
+      <button class="tab" data-tab="3" type="button"><b>3</b>같은 속력</button>
+      <button class="tab" data-tab="4" type="button"><b>4</b>반사파</button>
+    </nav>
+
+    <div class="topbar-actions">
+      <div class="quick-actions">
+        <button class="btn btn-primary" id="playBtn" type="button">시작</button>
+        <button class="btn btn-ghost" id="pauseBtn" type="button" disabled>일시정지</button>
+        <button class="btn btn-ghost" id="resetBtn" type="button">초기화</button>
+      </div>
+      <button class="btn btn-ghost" id="settingsToggle" type="button">⚙ 설정</button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <section class="stage card" id="stage">
+      <canvas id="simCanvas"></canvas>
+      <div class="graph-col hidden" id="graphCol">
+        <div class="formula-box">
+          <math display="block" class="gen-eq">
+            <mrow>
+              <msup><mi>f</mi><mo>′</mo></msup>
+              <mo>=</mo>
+              <mfrac>
+                <mrow><mi>v</mi><mo>±</mo><msub><mi>v</mi><mi>o</mi></msub></mrow>
+                <mrow><mi>v</mi><mo>∓</mo><msub><mi>v</mi><mi>s</mi></msub></mrow>
+              </mfrac>
+              <mi>f</mi>
+            </mrow>
+          </math>
+          <p class="eq-rule">분자는 관찰자 (다가가면 +) · 분모는 음원 (다가오면 −)</p>
+          <p class="eq-sub" id="eqSub1">–</p>
+          <p class="eq-sub" id="eqSub2">–</p>
+        </div>
+        <div class="graph-wrap"><canvas id="graphCanvas"></canvas></div>
+      </div>
+      <div class="badge stage-tag" id="statusTag">대기 중</div>
+      <div class="stage-toast hidden" id="toast"></div>
+      <div class="stage-note hidden" id="stageNote">스피드 건도 같은 원리다 · 실제 스피드 건은 초음파가 아니라 전파를 쓴다</div>
+      <div class="stage-hint" id="stageHint"></div>
+    </section>
+
+    <div class="dock">
+
+      <section class="obs-card card" data-card="0">
+        <div class="obs-head">
+          <span class="obs-name" data-role="name">관찰자 A</span>
+          <span class="obs-tag" data-role="tag"></span>
+          <button class="speaker" data-role="spk" type="button" aria-pressed="false" aria-label="소리 켜기">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z"/><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+          </button>
+        </div>
+        <div class="obs-main">
+          <div class="obs-f" data-role="fbox"><i data-role="fsym">f</i><b data-role="f">–</b><span>Hz</span></div>
+          <div class="obs-sub">
+            <div><span data-role="k1">v′</span><b data-role="v1">–</b></div>
+            <div><span data-role="k2">λ</span><b data-role="v2">–</b></div>
+            <div class="hidden" data-role="row3"><span data-role="k3">T</span><b data-role="v3">–</b></div>
+          </div>
+        </div>
+        <canvas class="strip" data-role="strip"></canvas>
+        <div class="obs-formula" data-role="form">–</div>
+      </section>
+
+      <section class="ctrl card">
+        <div class="ctrl-head">
+          <label for="vsNum" id="speedLabel">음원 속력</label>
+          <span class="num-wrap"><input type="number" class="num" id="vsNum" min="0" max="306" step="1" /><i>m/s</i></span>
+        </div>
+        <input type="range" id="vsInput" min="0" max="306" step="1" aria-labelledby="speedLabel" />
+        <div class="ctrl-meta"><span id="vsMeta">–</span><span>최대 음속의 0.9배</span></div>
+        <div class="dir-row">
+          <button class="btn dir" data-dir="-1" type="button" aria-label="왼쪽으로 움직이기">◀</button>
+          <button class="btn dir" data-dir="0" type="button" aria-label="멈추기">■</button>
+          <button class="btn dir" data-dir="1" type="button" aria-label="오른쪽으로 움직이기">▶</button>
+          <div class="seg hidden" id="moverSeg" role="group" aria-label="움직일 것">
+            <button type="button" data-mover="target">표적</button>
+            <button type="button" data-mover="bat">박쥐</button>
+          </div>
+          <button class="btn btn-ghost example" id="exampleBtn" type="button">교과서 예제</button>
+        </div>
+        <div class="preset-row hidden" id="presetRow">
+          <button class="btn chip" data-preset="tree" type="button" title="그림 III-14 (가)">나무 (정지)</button>
+          <button class="btn chip" data-preset="near" type="button" title="그림 III-14 (나)">새 다가옴</button>
+          <button class="btn chip" data-preset="far" type="button" title="그림 III-14 (나)">새 멀어짐</button>
+          <button class="btn chip" data-preset="q3" type="button" title="31500 Hz를 내는 박쥐가 4 m/s로 벽에 다가감 (p.111)">확인 문제 3</button>
+        </div>
+      </section>
+
+      <section class="obs-card card" data-card="1">
+        <div class="obs-head">
+          <span class="obs-name" data-role="name">관찰자 B</span>
+          <span class="obs-tag" data-role="tag"></span>
+          <button class="speaker" data-role="spk" type="button" aria-pressed="false" aria-label="소리 켜기">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z"/><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+          </button>
+        </div>
+        <div class="obs-main">
+          <div class="obs-f" data-role="fbox"><i data-role="fsym">f</i><b data-role="f">–</b><span>Hz</span></div>
+          <div class="obs-sub">
+            <div><span data-role="k1">v′</span><b data-role="v1">–</b></div>
+            <div><span data-role="k2">λ</span><b data-role="v2">–</b></div>
+            <div class="hidden" data-role="row3"><span data-role="k3">T</span><b data-role="v3">–</b></div>
+          </div>
+        </div>
+        <canvas class="strip" data-role="strip"></canvas>
+        <div class="obs-formula" data-role="form">–</div>
+      </section>
+
+    </div>
+  </main>
+
+  <div class="settings-overlay hidden" id="settingsOverlay">
+    <div class="settings-backdrop" id="settingsBackdrop"></div>
+    <aside class="card settings-panel">
+      <div class="settings-panel-header">
+        <h2>설정</h2>
+        <button class="settings-close" id="settingsClose" type="button" aria-label="설정 닫기">✕</button>
+      </div>
+
+      <div class="control-group">
+        <div class="control-row">
+          <label for="fInput">음원의 진동수 f</label>
+          <span class="num-wrap"><input type="number" class="num" id="fNum" min="200" max="1000" step="1" /><i>Hz</i></span>
+        </div>
+        <input type="range" id="fInput" min="200" max="1000" step="10" />
+        <p class="control-hint">음속은 340 m/s로 고정이다.</p>
+      </div>
+
+      <div class="control-group">
+        <div class="control-row"><label for="slowSelect">화면 속도</label></div>
+        <select id="slowSelect">
+          <option value="500">느리게 (실제보다 500배 느리게)</option>
+          <option value="300" selected>보통 (실제보다 300배 느리게)</option>
+          <option value="150">빠르게 (실제보다 150배 느리게)</option>
+        </select>
+      </div>
+
+      <div class="control-group toggles">
+        <label class="toggle"><input type="checkbox" id="showLambda" checked /><span>파장 표시</span></label>
+        <label class="toggle"><input type="checkbox" id="showRef" checked /><span>원래 소리 파형 같이 보기</span></label>
+      </div>
+    </aside>
+  </div>
+
+</div>
+
+<script src="shared/sim-utils.js"></script>
+<script src="doppler-effect.js"></script>
+</body>
+</html>

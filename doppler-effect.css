@@ -1,0 +1,476 @@
+/* ============================================================
+   도플러 효과 시뮬레이터
+   디자인 출처: DESIGN-vercel.md
+   밝은 바탕(#fafafa) + 흰 카드 + 1px 헤어라인, 잉크 #171717 한 가지.
+   색은 의미에만 쓴다 — 파랑 = 높아짐(파장 짧아짐), 빨강 = 낮아짐(파장 길어짐).
+
+   ⚠️ 캔버스에 직접 그리는 색은 doppler-effect.js 상단의
+      COLOR_* 상수로 따로 정의되어 있다. 여기만 고치면 그림 색은 안 바뀐다.
+   ============================================================ */
+
+body[data-page="doppler-effect"] {
+  --canvas: #fafafa;
+  --surface: #ffffff;
+  --surface-soft: #f2f2f2;
+  --hairline: #ebebeb;
+  --hairline-soft: #f2f2f2;
+  --ink: #171717;
+  --ink-strong: #171717;
+  --charcoal: #171717;
+  --slate: #4d4d4d;
+  --steel: #4d4d4d;
+  --stone: #8f8f8f;
+  --muted: #a1a1a1;
+
+  --accent: #171717;
+  --accent-soft: #f2f2f2;
+  --hi: #0070f3;
+  --hi-soft: #e8f1fe;
+  --lo: #ee0000;
+  --lo-soft: #fdeaea;
+
+  --font-display: 'Geist', -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  /* 고정폭 글꼴에는 한글이 없다 — 한글은 시스템 고딕으로 넘긴다 */
+  --font-mono: 'Geist Mono', ui-monospace, 'Apple SD Gothic Neo', 'Malgun Gothic', monospace;
+
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+/* ---------- 한 화면 레이아웃 ---------- */
+
+body[data-page="doppler-effect"] .page {
+  max-width: 1920px;
+  height: 100vh;
+  padding: 14px 20px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+body[data-page="doppler-effect"] .topbar {
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  flex: 0 0 auto;
+}
+body[data-page="doppler-effect"] h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.6px; }
+body[data-page="doppler-effect"] .eyebrow { color: var(--stone); font-weight: 500; letter-spacing: 0.04em; }
+
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.quick-actions { display: flex; gap: 8px; }
+
+body[data-page="doppler-effect"] .layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- 탭 (카테고리 필) ---------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 9999px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  border-radius: 9999px;
+  padding: 7px 14px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.tab b { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--stone); }
+.tab:hover:not(:disabled) { color: var(--ink); background: var(--surface-soft); }
+.tab.is-active, .tab.is-active:hover { background: var(--ink); color: #ffffff; }
+.tab.is-active b { color: var(--muted); }
+.tab:disabled { color: var(--muted); cursor: not-allowed; }
+.tab:disabled b { color: #d4d4d4; }
+
+/* ---------- 버튼 (앱 컨트롤은 6px 사각) ---------- */
+
+body[data-page="doppler-effect"] .btn {
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+body[data-page="doppler-effect"] .btn-primary { background: var(--ink); color: #ffffff; border-color: var(--ink); }
+body[data-page="doppler-effect"] .btn-primary:hover:not(:disabled) { filter: none; background: #383838; }
+
+body[data-page="doppler-effect"] .btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--hairline); }
+body[data-page="doppler-effect"] .btn-ghost:hover:not(:disabled) { background: var(--canvas); border-color: #d4d4d4; color: var(--ink); }
+
+body[data-page="doppler-effect"] .btn:disabled { opacity: 0.45; }
+
+body[data-page="doppler-effect"] .card {
+  background: var(--surface);
+  border-color: var(--hairline);
+  border-radius: 12px;
+}
+
+body[data-page="doppler-effect"] .badge {
+  background: var(--surface);
+  border-color: var(--hairline);
+  color: var(--slate);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- 무대 ---------- */
+
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+#simCanvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.stage-tag { position: absolute; top: 12px; left: 12px; pointer-events: none; }
+
+.stage-hint {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--stone);
+  pointer-events: none;
+}
+
+/* 파면 위에 겹쳐도 읽히게 */
+.stage-hint, .stage-note {
+  background: rgba(255, 255, 255, 0.88);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stage-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.stage-note {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 12px;
+  color: var(--stone);
+  pointer-events: none;
+}
+
+/* 탭 3 — 왼쪽 두 줄, 오른쪽 위 일반식 · 아래 그래프 */
+.stage.with-graph { display: grid; grid-template-columns: minmax(0, 1fr) 36%; }
+.stage.with-graph .stage-hint { right: calc(36% + 14px); }
+
+.graph-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--hairline);
+}
+.graph-col.hidden { display: none !important; }
+
+.formula-box {
+  flex: 0 0 auto;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.gen-eq { font-size: 21px; margin: 0 0 6px; }
+.eq-rule {
+  margin: 0 0 7px;
+  font-size: 12px;
+  color: var(--stone);
+  text-align: center;
+}
+.eq-sub {
+  margin: 3px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--slate);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.eq-sub b { color: var(--ink); font-weight: 600; }
+
+.graph-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
+#graphCanvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+
+/* ---------- 아래 칸: 관찰자 A · 조작 · 관찰자 B ---------- */
+
+.dock {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.obs-card {
+  min-width: 0;
+  padding: 11px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.obs-head { display: flex; align-items: center; gap: 8px; }
+.obs-name { font-size: 13.5px; font-weight: 600; }
+
+.obs-tag {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--surface-soft);
+  color: var(--slate);
+}
+.obs-tag:empty { display: none; }
+.obs-tag.is-hi { background: var(--hi-soft); color: var(--hi); }
+.obs-tag.is-lo { background: var(--lo-soft); color: var(--lo); }
+
+.speaker {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--slate);
+  cursor: pointer;
+}
+.speaker:hover { border-color: #d4d4d4; color: var(--ink); }
+.speaker svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.speaker .wave { opacity: 0.3; }
+.speaker.is-on, .speaker.is-on:hover { background: var(--ink); border-color: var(--ink); color: #ffffff; }
+.speaker.is-on .wave { opacity: 1; }
+
+.obs-main { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+
+.obs-f { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.obs-f i { font-family: var(--font-mono); font-size: 15px; color: var(--stone); }
+.obs-f b {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.obs-f span { font-size: 13px; color: var(--stone); }
+.obs-f.is-hi i, .obs-f.is-hi b { color: var(--hi); }
+.obs-f.is-lo i, .obs-f.is-lo b { color: var(--lo); }
+.obs-f.is-empty b { color: #d4d4d4; }
+
+.obs-sub { display: flex; flex-direction: column; gap: 2px; }
+.obs-sub div { display: flex; align-items: baseline; justify-content: flex-end; gap: 8px; }
+.obs-sub span { font-family: var(--font-mono); font-size: 12px; color: var(--stone); }
+.obs-sub b {
+  min-width: 78px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.obs-sub b.is-hi, .obs-sub span.is-hi { color: var(--hi); }
+.obs-sub b.is-lo, .obs-sub span.is-lo { color: var(--lo); }
+
+.strip { display: block; width: 100%; height: 38px; }
+
+.obs-formula {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--slate);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctrl {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+}
+
+.ctrl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ctrl-head label { font-size: 13.5px; font-weight: 600; }
+
+.ctrl-meta {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--stone);
+}
+
+.dir-row { display: flex; gap: 6px; }
+
+body[data-page="doppler-effect"] .btn.dir {
+  width: 44px;
+  padding: 7px 0;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--hairline);
+}
+body[data-page="doppler-effect"] .btn.dir:hover { border-color: #d4d4d4; }
+body[data-page="doppler-effect"] .btn.dir.is-active { background: var(--ink); color: #ffffff; border-color: var(--ink); }
+
+body[data-page="doppler-effect"] .btn.example { margin-left: auto; }
+
+/* 탭 4 — 무엇을 움직일지 */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.seg button {
+  background: var(--surface);
+  border: none;
+  padding: 7px 10px;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--slate);
+  cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--hairline); }
+.seg button.is-active { background: var(--ink); color: #ffffff; }
+
+.preset-row { display: flex; flex-wrap: wrap; gap: 6px; }
+body[data-page="doppler-effect"] .btn.chip {
+  padding: 4px 7px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--hairline);
+}
+body[data-page="doppler-effect"] .btn.chip:hover { border-color: #d4d4d4; background: var(--canvas); }
+
+/* ---------- 숫자 입력 ---------- */
+
+.num-wrap { display: inline-flex; align-items: baseline; gap: 5px; }
+.num-wrap i {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--stone);
+}
+
+body[data-page="doppler-effect"] input[type="number"].num {
+  width: 76px;
+  padding: 4px 7px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+}
+body[data-page="doppler-effect"] input[type="number"].num:focus {
+  border-width: 1px;
+  padding: 4px 7px;
+  border-color: var(--ink);
+}
+
+body[data-page="doppler-effect"] select { border-radius: 6px; }
+
+/* ---------- 설정 팝업 ---------- */
+
+.settings-overlay { position: fixed; inset: 0; z-index: 100; display: flex; justify-content: flex-end; }
+.settings-overlay.hidden { display: none !important; }
+.settings-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.22); }
+
+.settings-panel {
+  position: relative;
+  width: 340px;
+  max-width: 90vw;
+  height: 100%;
+  overflow-y: auto;
+  border-radius: 0;
+  border-top: none;
+  border-bottom: none;
+  border-right: none;
+  padding: 20px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: slideIn 0.18s ease-out;
+}
+body[data-page="doppler-effect"] .settings-panel { border-radius: 0; }
+
+@keyframes slideIn {
+  from { transform: translateX(14px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.settings-panel-header { display: flex; align-items: center; justify-content: space-between; }
+.settings-panel-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.settings-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--stone);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.settings-close:hover { color: var(--ink); }
+
+body[data-page="doppler-effect"] .control-hint { color: var(--stone); }
+.toggles { gap: 10px; }
+
+/* ---------- 좁은 화면 ---------- */
+
+@media (max-width: 1000px) {
+  body[data-page="doppler-effect"] .page { height: auto; }
+  .stage { flex: none; height: 56vh; min-height: 320px; }
+  .dock { grid-template-columns: minmax(0, 1fr); }
+  .dock .ctrl { order: -1; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; }
+  .stage.with-graph {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 390px;
+    height: calc(56vh + 390px);
+  }
+  .graph-col { border-left: none; border-top: 1px solid var(--hairline); }
+  .stage.with-graph .stage-hint { right: 14px; bottom: 400px; }
+}
